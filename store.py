@@ -100,7 +100,7 @@ class Fingerprint(object):
     def closest(self, others):
         minDistance = self.distanceTo(others[0])
         minIndex = 0
-        for prototypeIndex, prototype in enumerate(others[1:]):
+        for prototypeIndex, prototype in enumerate(others):
             distance = self.distanceTo(prototype)
             if distance < minDistance:
                 minIndex = prototypeIndex
@@ -131,24 +131,30 @@ def logStorage(imageTimestamp, closestIndex, filename):
     with open(logFilename, "a") as storageLog:
         storageLog.write("%s %i %s\n" % (imageTimestamp.strftime("%Y-%m-%dT%H:%M:%S.%f%z"), closestIndex, imageHash))
 
+def loadOrGenerateIndex(size):
+    index = loadIndex()
+    if index == None:
+        index = []
+        logger.info("Generating index of %i prototypes" % size)
+        rng = random.Random()
+        with open(INDEX_FILENAME, "wb") as indexFile:
+            for i in range(size):
+                fp = Fingerprint.random(rng)
+                pickle.dump(fp.fp, indexFile, pickle.HIGHEST_PROTOCOL)
+                index.append(fp)
+        logger.info("Generated index")
+    return index
 
 def main():
     config = configparser.ConfigParser()
     config.read('bucketcam.ini')
-    INDEX_SIZE=config.getint('storage', 'numberOfImages')
-    index = loadIndex()
-    if index == None:
-        logger.info("Generating index of %i prototypes" % INDEX_SIZE)
-        rng = random.Random()
-        with open(INDEX_FILENAME, "wb") as indexFile:
-            for i in range(INDEX_SIZE):
-                fp = Fingerprint.random(rng)
-                pickle.dump(fp.fp, indexFile, pickle.HIGHEST_PROTOCOL)
-        logger.info("Generated index, exiting")
-        return 0
-    if len(index) != INDEX_SIZE:
+    indexSize = config.getint('storage', 'numberOfImages')
+    index = loadOrGenerateIndex(indexSize)
+
+    if len(index) != indexSize:
         logger.error("Index loaded has wrong size (remove \"%s\")" % INDEX_FILENAME)
         return 1
+
     logger.info("Loading image")
     imageData = io.BytesIO(loadCameraImage(config))
     imageTimestamp = datetime.datetime.now()
