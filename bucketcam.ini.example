@@ -1,0 +1,7 @@
+[source]
+imageDownloadUrl=https://cam.example.com/jpg/image.jpg
+basicAuthUser=someuserallowedtoview
+basicAuthPass=somepasswordyourequre
+
+[storage]
+numberOfImages=100
