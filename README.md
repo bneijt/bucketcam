@@ -33,3 +33,8 @@ Usage
  - Run `./store.py` once to create the index
  - Run `./store.py` a second time to download and store an image from the url
 
+Files
+-----
+
+ - `store.py`: download and index an image
+ - `report.py`: generate an HTML page with images from the log files
