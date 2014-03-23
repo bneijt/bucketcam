@@ -31,6 +31,7 @@ import datetime
 import configparser
 import urllib.request
 import numpy
+import sys
 
 INDEX_FILENAME = "index.pkl"
 
@@ -147,16 +148,20 @@ def loadOrGenerateIndex(size):
         logger.info("Generated index")
     return index
 
-def main():
-    config = configparser.ConfigParser()
-    config.read('bucketcam.ini')
-    indexSize = config.getint('storage', 'numberOfImages')
-    index = loadOrGenerateIndex(indexSize)
+def storeImageAtIndex(image, index):
+    filename = os.path.join("images", indexFilename(index))
+    if not os.path.exists(filename):
+        #Check if we need to make the directory as well
+        dirname = os.path.dirname(filename)
+        if not os.path.exists(dirname):
+            os.makedirs(dirname)
 
-    if len(index) != indexSize:
-        logger.error("Index loaded has wrong size (remove \"%s\")" % INDEX_FILENAME)
-        return 1
+    #Store image and log hash and index
+    image.save(filename)
+    return filename
 
+
+def loadAndSaveImage(index, config):
     logger.info("Loading image")
     imageData = io.BytesIO(loadCameraImage(config))
     imageTimestamp = datetime.datetime.now()
@@ -167,17 +172,24 @@ def main():
     logger.info("Finding closest match")
     closestIndex = fp.closest(index)
     logger.info("Storing image")
-    filename = os.path.join("images", indexFilename(closestIndex))
-    if not os.path.exists(filename):
-        #Check if we need to make the directory as well
-        dirname = os.path.dirname(filename)
-        if not os.path.exists(dirname):
-            os.makedirs(dirname)
-
-    #Store image and log hash and index
-    image.save(filename)
-
+    filename = storeImageAtIndex(image, closestIndex)
     logStorage(imageTimestamp, closestIndex, filename)
 
+def loadConfig():
+    config = configparser.ConfigParser()
+    config.read('bucketcam.ini')
+    return config
+
+def main():
+    config = loadConfig()
+    indexSize = config.getint('storage', 'numberOfImages')
+    index = loadOrGenerateIndex(indexSize)
+
+    if len(index) != indexSize:
+        logger.error("Index loaded has wrong size (remove \"%s\")" % INDEX_FILENAME)
+        return 1
+    loadAndSaveImage(index, config)
+    return 0
+
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
