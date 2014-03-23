@@ -123,6 +123,7 @@ def loadIndex():
     index = []
     if os.path.exists(INDEX_FILENAME):
         with open(INDEX_FILENAME, "rb") as indexFile:
+            logger.info("Loading index from disk")
             while True:
                 try:
                     p = pickle.load(indexFile)
@@ -144,7 +145,7 @@ def main():
     INDEX_SIZE=config.getint('storage', 'numberOfImages')
     index = loadIndex()
     if index == None:
-        logger.info("Generating index %i prototypes" % INDEX_SIZE)
+        logger.info("Generating index of %i prototypes" % INDEX_SIZE)
         rng = random.Random()
         with open(INDEX_FILENAME, "wb") as indexFile:
             for i in range(INDEX_SIZE):
