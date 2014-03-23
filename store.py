@@ -135,7 +135,7 @@ def logStorage(imageTimestamp, closestIndex, filename):
     imageHash = hashOfFile(filename)
     logFilename = "images/storage_%s.log" % imageTimestamp.strftime("%Y-%m-%d")
     with open(logFilename, "a") as storageLog:
-        storageLog.write("%s %i -> %s\n" % (imageTimestamp.strftime("%Y-%m-%dT%H:%M:%S.%f%z"), closestIndex, imageHash))
+        storageLog.write("%s %i %s\n" % (imageTimestamp.strftime("%Y-%m-%dT%H:%M:%S.%f%z"), closestIndex, imageHash))
 
 
 def main():
