@@ -69,7 +69,7 @@ def hashOfFile(filename):
 
 
 class Fingerprint(object):
-    FP_MAXIMUM = 16 #Exclusive maximum of fingerprint
+    FP_MAXIMUM = 256 #Exclusive maximum of fingerprint
     FP_MINIMUM = 0 #Inclusive minimum of fingerprint
     FP_LENGTH = 50*50 #Length/number of dimensions in the fp
 
@@ -87,13 +87,15 @@ class Fingerprint(object):
         '''Resize, gray and quantize to 10'''
         assert Fingerprint.FP_LENGTH == 50*50
         fp = image.resize((50,50)).convert("L").quantize(Fingerprint.FP_MAXIMUM)
-        fp.save("/tmp/fp.png")
         return Fingerprint(numpy.array(fp.getdata()))
+
     def asList():
         return self.fp
+
     @staticmethod
     def fromList(l):
         return Fingerprint(l)
+
     def distanceTo(self, other):
         return sum(abs(other.fp - self.fp))
 
