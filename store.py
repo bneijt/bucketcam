@@ -30,7 +30,7 @@ import hashlib
 import datetime
 import configparser
 import urllib.request
-
+import numpy
 
 INDEX_FILENAME = "index.pkl"
 
@@ -74,12 +74,13 @@ class Fingerprint(object):
     FP_LENGTH = 50*50 #Length/number of dimensions in the fp
 
     def __init__(self, fp):
+        assert isinstance(fp, numpy.ndarray)
         self.fp = fp
 
     @staticmethod
     def random(rng):
         '''Generate a random fingerprint, given the random number generator'''
-        return Fingerprint([rng.randrange(Fingerprint.FP_MINIMUM, Fingerprint.FP_MAXIMUM) for i in range(Fingerprint.FP_LENGTH)])
+        return Fingerprint(numpy.array([rng.randrange(Fingerprint.FP_MINIMUM, Fingerprint.FP_MAXIMUM) for i in range(Fingerprint.FP_LENGTH)]))
 
     @staticmethod
     def fromImage(image):
@@ -87,28 +88,20 @@ class Fingerprint(object):
         assert Fingerprint.FP_LENGTH == 50*50
         fp = image.resize((50,50)).convert("L").quantize(Fingerprint.FP_MAXIMUM)
         fp.save("/tmp/fp.png")
-        return Fingerprint(list(fp.getdata()))
+        return Fingerprint(numpy.array(fp.getdata()))
     def asList():
         return self.fp
     @staticmethod
     def fromList(l):
         return Fingerprint(l)
     def distanceTo(self, other):
-        distance = 0
-        assert len(other.fp) == len(self.fp)
-        for i in range(len(self.fp)):
-            distance += abs(other.fp[i] - self.fp[i])
-        return distance
+        return sum(abs(other.fp - self.fp))
 
     def closest(self, others):
         minDistance = self.distanceTo(others[0])
         minIndex = 0
         for prototypeIndex, prototype in enumerate(others[1:]):
-            distance = 0
-            for i in range(len(self.fp)):
-                distance += abs(prototype.fp[i] - self.fp[i])
-                if distance > minDistance:
-                    break
+            distance = self.distanceTo(prototype)
             if distance < minDistance:
                 minIndex = prototypeIndex
         return minIndex
