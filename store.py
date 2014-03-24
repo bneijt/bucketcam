@@ -17,23 +17,15 @@
 
 
 from PIL import Image
-import http.client
-import base64
+# import http.client
+# import base64
 import io
 import logging
-import binascii
-import struct
-import random
 import os.path
-import pickle
-import hashlib
-import datetime
 import configparser
 import urllib.request
-import numpy
 import sys
-
-INDEX_FILENAME = "index.pkl"
+# import datetime
 
 logging.basicConfig(level = logging.DEBUG, format = '%(asctime)s %(levelname)s %(message)s')
 logger = logging.getLogger(__name__)
@@ -53,127 +45,78 @@ def loadCameraImage(config):
     r = opener.open(url)
     return r.read()
 
-def loadDiskImage():
-    with open("original.png", "rb") as img:
-        return img.read()
+import shutil
 
 
-def hashOfFile(filename):
-    buffSize = 1024*100
-    hasher = hashlib.sha1()
-    with open(filename, 'rb') as afile:
-        buff = afile.read(buffSize)
-        while len(buff) > 0:
-            hasher.update(buff)
-            buff = afile.read(buffSize)
-    return hasher.hexdigest()
-
-
-class Fingerprint(object):
-    FP_MAXIMUM = 256 #Exclusive maximum of fingerprint
-    FP_MINIMUM = 0 #Inclusive minimum of fingerprint
-    FP_LENGTH = 50*50 #Length/number of dimensions in the fp
-
-    def __init__(self, fp):
-        assert isinstance(fp, numpy.ndarray)
-        self.fp = fp
+class LevelOfDetail(object):
+    def __init__(self, levels):
+        assert isinstance(levels, list)
+        assert len(levels) >= 1
+        logger.info("LOD with levels %s", repr(levels))
+        self.levels =  levels
 
     @staticmethod
-    def random(rng):
-        '''Generate a random fingerprint, given the random number generator'''
-        return Fingerprint(numpy.array([rng.randrange(Fingerprint.FP_MINIMUM, Fingerprint.FP_MAXIMUM) for i in range(Fingerprint.FP_LENGTH)]))
+    def fromImageAtLevel(image, toplevel):
+        levels = [LevelOfDetail.imageTagAtLevel(image, 0)]
+        for l in range(toplevel):
+            levels.append(LevelOfDetail.imageTagAtLevel(image, l))
+        return LevelOfDetail(levels)
 
     @staticmethod
-    def fromImage(image):
-        '''Resize, gray and quantize to 10'''
-        assert Fingerprint.FP_LENGTH == 50*50
-        fp = image.resize((50,50)).convert("L").quantize(Fingerprint.FP_MAXIMUM)
-        return Fingerprint(numpy.array(fp.getdata()))
+    def imageTagAtLevel(image, level):
+        if level == 0:
+            return str(image.convert("L").quantize(256).resize((1,1)).getpixel((0,0)))
+        if level in [1,2,3,4]:
+            v = image.convert("L").quantize(256).resize((2,2)).getpixel((level - 1 - 2 * (level // 3), level//3))
+            return str(v)
+        assert False
 
-    def asList():
-        return self.fp
+    def remove(self):
+        #Remove anything already there
+        path = self.path()
+        if os.path.exists(path):
+            logger.info("Removing %s", path)
+            shutil.rmtree(path)
+        if os.path.exists(path + ".jpg"):
+            logger.info("Removing %s", path + ".jpg")
+            os.unlink(path + ".jpg")
 
-    @staticmethod
-    def fromList(l):
-        return Fingerprint(l)
+    def getLevel(self):
+        return len(self.levels) -1
 
-    def distanceTo(self, other):
-        return sum(abs(other.fp - self.fp))
+    def isOccupied(self):
+        loc = self.path()
+        return os.path.exists(loc) or os.path.exists(loc + ".jpg")
 
-    def closest(self, others):
-        minDistance = self.distanceTo(others[0])
-        minIndex = 0
-        for prototypeIndex, prototype in enumerate(others):
-            distance = self.distanceTo(prototype)
-            if distance < minDistance:
-                minIndex = prototypeIndex
-        return minIndex
+    def hasBranched(self):
+        loc = self.path()
+        logger.info(loc)
+        return os.path.exists(loc) and os.path.isdir(loc)
 
+    def store(self, image):
+        self.remove()
+        path = self.path()
+        directory = os.path.dirname(path)
+        if len(directory) and not os.path.exists(directory):
+            os.makedirs(directory)
+        loc = path + ".jpg"
+        logger.info("Storing %s", loc)
+        image.save(loc)
 
-def indexFilename(idx):
-    dirIdx = round(idx / 5000)
-    return "%i/%i.jpg" % (dirIdx, idx)
-
-
-def loadIndex():
-    index = []
-    if os.path.exists(INDEX_FILENAME):
-        with open(INDEX_FILENAME, "rb") as indexFile:
-            logger.info("Loading index from disk")
-            while True:
-                try:
-                    p = pickle.load(indexFile)
-                    index.append(Fingerprint.fromList(p))
-                except EOFError as e:
-                    return index
-    return None
-
-def logStorage(imageTimestamp, closestIndex, filename):
-    imageHash = hashOfFile(filename)
-    logFilename = "images/storage_%s.log" % imageTimestamp.strftime("%Y-%m-%d")
-    with open(logFilename, "a") as storageLog:
-        storageLog.write("%s %i %s\n" % (imageTimestamp.strftime("%Y-%m-%dT%H:%M:%S.%f%z"), closestIndex, imageHash))
-
-def loadOrGenerateIndex(size):
-    index = loadIndex()
-    if index == None:
-        index = []
-        logger.info("Generating index of %i prototypes" % size)
-        rng = random.Random()
-        with open(INDEX_FILENAME, "wb") as indexFile:
-            for i in range(size):
-                fp = Fingerprint.random(rng)
-                pickle.dump(fp.fp, indexFile, pickle.HIGHEST_PROTOCOL)
-                index.append(fp)
-        logger.info("Generated index")
-    return index
-
-def storeImageAtIndex(image, index):
-    filename = os.path.join("images", indexFilename(index))
-    if not os.path.exists(filename):
-        #Check if we need to make the directory as well
-        dirname = os.path.dirname(filename)
-        if not os.path.exists(dirname):
-            os.makedirs(dirname)
-
-    #Store image and log hash and index
-    image.save(filename)
-    return filename
+    def branch(self):
+        self.remove()
+        loc = self.path()
+        if not os.path.exists(loc):
+            os.makedirs(loc)
 
 
-def loadAndSaveImage(index, config):
+    def path(self):
+        return os.path.join("images", *self.levels)
+
+def loadImage(config):
     logger.info("Loading image")
     imageData = io.BytesIO(loadCameraImage(config))
-    imageTimestamp = datetime.datetime.now()
-
-    image = Image.open(imageData)
-    logger.info("Fingerprinting image")
-    fp = Fingerprint.fromImage(image)
-    logger.info("Finding closest match")
-    closestIndex = fp.closest(index)
-    logger.info("Storing image")
-    filename = storeImageAtIndex(image, closestIndex)
-    logStorage(imageTimestamp, closestIndex, filename)
+    return Image.open(imageData)
 
 def loadConfig():
     config = configparser.ConfigParser()
@@ -182,13 +125,36 @@ def loadConfig():
 
 def main():
     config = loadConfig()
-    indexSize = config.getint('storage', 'numberOfImages')
-    index = loadOrGenerateIndex(indexSize)
 
-    if len(index) != indexSize:
-        logger.error("Index loaded has wrong size (remove \"%s\")" % INDEX_FILENAME)
-        return 1
-    loadAndSaveImage(index, config)
+    #Load image
+    image = loadImage(config)
+    lod = LevelOfDetail.fromImageAtLevel(image, 0)
+    while lod.hasBranched():
+        logger.info("Has branched at level %i", lod.getLevel())
+        lod = LevelOfDetail.fromImageAtLevel(image, lod.getLevel() + 1)
+
+    maxSize = config.getint('storage', 'numberOfImages')
+    moreImagesAllowed = True
+
+    if lod.isOccupied():
+        #There is an image already stored here. If more images are allowed, branch, otherwise overwrite
+        if moreImagesAllowed:
+            #Branch to store the extra image
+            logger.info("Branching and increasing level")
+            lod.branch()
+            lod = LevelOfDetail.fromImageAtLevel(image, lod.getLevel() + 1)
+            lod.store(image)
+        else:
+            #No more images allowed, just overwrite the image or directory
+            lod.store(image)
+    else:
+        #There is no image here, if we store here we get another image
+        if moreImagesAllowed:
+            lod.store(image)
+        else:
+            #No more images allowed, prune the branch by going up one and storing there
+            lod = LevelOfDetail.fromImageAtLevel(image, lod.getLevel() - 1)
+            lod.store(image)
     return 0
 
 if __name__ == "__main__":
