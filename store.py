@@ -16,19 +16,30 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-from PIL import Image
-# import http.client
-# import base64
+from PIL import Image, ImageFilter
 import io
 import logging
 import os.path
 import configparser
 import urllib.request
 import sys
-# import datetime
+import datetime
+import shutil
+import hashlib
+import random
 
-logging.basicConfig(level = logging.DEBUG, format = '%(asctime)s %(levelname)s %(message)s')
+logging.basicConfig(level = logging.INFO, format = '%(asctime)s %(levelname)s %(message)s')
 logger = logging.getLogger(__name__)
+
+def hashOfFile(filename):
+    buffSize = 1024*100
+    hasher = hashlib.sha1()
+    with open(filename, 'rb') as afile:
+        buff = afile.read(buffSize)
+        while len(buff) > 0:
+            hasher.update(buff)
+            buff = afile.read(buffSize)
+    return hasher.hexdigest()
 
 def loadCameraImage(config):
     url = config.get("source", "imageDownloadUrl")
@@ -44,9 +55,6 @@ def loadCameraImage(config):
     opener = urllib.request.build_opener(handler)
     r = opener.open(url)
     return r.read()
-
-import shutil
-
 
 def meanValue(image):
     #General value of image
@@ -70,11 +78,35 @@ def countBlue(image):
     data = image.resize((100,100)).getdata(band = 2)
     return len(set(data))
 
+def edgeValueForQuadrant(quadrantIndex):
+    def q(image):
+        edges = image.filter(ImageFilter.FIND_EDGES)
+        w, h = image.size
+        quadrants = (
+          (0, 0, w / 2, h / 2),
+          (w / 2, 0, w, h / 2),
+          (0, h / 2, w / 2, h),
+          (w / 2, h / 2, w, h)
+         )
+        return edges.crop(quadrants[quadrantIndex]).resize((1,1)).getpixel((0,0))
+    return q
+    
+def randomValue(image):
+    return random.randint(0, 1000)
+
+
+def logStorage(filename):
+    imageTimestamp = datetime.datetime.now()
+    imageHash = hashOfFile(filename)
+    logFilename = "images/storage_%s.log" % imageTimestamp.strftime("%Y-%m-%d")
+    with open(logFilename, "a") as storageLog:
+        storageLog.write("%s %s %s\n" % (imageTimestamp.strftime("%Y-%m-%dT%H:%M:%S.%f%z"), imageHash, filename))
+
 class LevelOfDetail(object):
     def __init__(self, levels):
         assert isinstance(levels, list)
         assert len(levels) >= 1
-        logger.info("LOD with levels %s", repr(levels))
+        logger.debug("LOD with levels %s", repr(levels))
         self.levels =  levels
 
     @staticmethod
@@ -90,11 +122,15 @@ class LevelOfDetail(object):
             meanValue,
             countRed,
             countGreen,
-            countBlue
+            countBlue,
+            edgeValueForQuadrant(3),
+            edgeValueForQuadrant(2),
+            edgeValueForQuadrant(1),
+            edgeValueForQuadrant(0),
+            randomValue
         ]
         assert level < len(levels)
         v = str(levels[level](image))
-        logger.debug("%s at level %i is %s", str(image), level, v)
         return v
 
     def remove(self):
@@ -116,7 +152,6 @@ class LevelOfDetail(object):
 
     def hasBranched(self):
         loc = self.path()
-        logger.info(loc)
         return os.path.exists(loc) and os.path.isdir(loc)
 
     def store(self, image):
@@ -126,15 +161,14 @@ class LevelOfDetail(object):
         if len(directory) and not os.path.exists(directory):
             os.makedirs(directory)
         loc = path + ".jpg"
-        logger.info("Storing %s", loc)
         image.save(loc)
+        logStorage(loc)
 
     def branch(self):
         self.remove()
         loc = self.path()
         if not os.path.exists(loc):
             os.makedirs(loc)
-
 
     def path(self):
         return os.path.join("images", *self.levels)
@@ -156,7 +190,6 @@ def main():
     image = loadImage(config)
     lod = LevelOfDetail.fromImageAtLevel(image, 0)
     while lod.hasBranched():
-        logger.info("Has branched at level %i", lod.getLevel())
         lod = LevelOfDetail.fromImageAtLevel(image, lod.getLevel() + 1)
 
     maxNumberOfImages = config.getint('storage', 'numberOfImages')
