@@ -151,12 +151,21 @@ class LevelOfDetail(object):
     def remove(self):
         #Remove anything already there
         path = self.path()
+        removeCount = 0
         if os.path.exists(path):
+            assert os.isdir(path)
             logger.info("Removing %s", path)
-            shutil.rmtree(path)
+            for (root, dirnames, files) in os.walk(top, topdown=False):
+                removeCount += len(files)
+                map(os.unlink, [os.path.join(root, name) for name in files])
+            for (path, dirnames, files) in os.walk(top, topdown=False):
+                map(os.rmdir, [os.path.join(root, name) for name in dirnames])
         if os.path.exists(path + ".jpg"):
             logger.info("Removing %s", path + ".jpg")
             os.unlink(path + ".jpg")
+            removeCount += 1
+        logger.debug("Removed %i files", removeCount)
+        return removeCount
 
     def getLevel(self):
         return len(self.levels) -1
