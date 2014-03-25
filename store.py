@@ -31,6 +31,18 @@ import random
 logging.basicConfig(level = logging.INFO, format = '%(asctime)s %(levelname)s %(message)s')
 logger = logging.getLogger(__name__)
 
+class UTC(datetime.tzinfo):
+  """UTC"""
+
+  def utcoffset(self, dt):
+    return datetime.timedelta(0)
+
+  def tzname(self, dt):
+    return "UTC"
+
+  def dst(self, dt):
+    return datetime.timedelta(0)
+
 def hashOfFile(filename):
     buffSize = 1024*100
     hasher = hashlib.sha1()
@@ -96,11 +108,11 @@ def randomValue(image):
 
 
 def logStorage(filename):
-    imageTimestamp = datetime.datetime.now()
+    imageTimestamp = datetime.datetime.now(UTC())
     imageHash = hashOfFile(filename)
     logFilename = "images/storage_%s.log" % imageTimestamp.strftime("%Y-%m-%d")
     with open(logFilename, "a") as storageLog:
-        storageLog.write("%s %s %s\n" % (imageTimestamp.strftime("%Y-%m-%dT%H:%M:%S.%f%z"), imageHash, filename))
+        storageLog.write("%s %s %s\n" % (imageTimestamp.isoformat(), imageHash, filename))
 
 class LevelOfDetail(object):
     def __init__(self, levels):
