@@ -92,7 +92,7 @@ def countBlue(image):
 
 def edgeValueForQuadrant(quadrantIndex):
     def q(image):
-        edges = image.filter(ImageFilter.FIND_EDGES)
+        edges = image.filter(ImageFilter.FIND_EDGES).convert("L")
         w, h = image.size
         quadrants = (
           (0, 0, w // 2, h // 2),
