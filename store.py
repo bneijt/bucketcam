@@ -48,6 +48,28 @@ def loadCameraImage(config):
 import shutil
 
 
+def meanValue(image):
+    #General value of image
+    return image.convert("L").resize((1,1)).getpixel((0,0))
+
+def countRed(image):
+    #Number of colors used in image
+    assert image.mode == "RGB"
+    data = image.resize((100,100)).getdata(band = 0)
+    return len(set(data))
+
+def countGreen(image):
+    #Number of colors used in image
+    assert image.mode == "RGB"
+    data = image.resize((100,100)).getdata(band = 1)
+    return len(set(data))
+
+def countBlue(image):
+    #Number of colors used in image
+    assert image.mode == "RGB"
+    data = image.resize((100,100)).getdata(band = 2)
+    return len(set(data))
+
 class LevelOfDetail(object):
     def __init__(self, levels):
         assert isinstance(levels, list)
@@ -57,19 +79,23 @@ class LevelOfDetail(object):
 
     @staticmethod
     def fromImageAtLevel(image, toplevel):
-        levels = [LevelOfDetail.imageTagAtLevel(image, 0)]
-        for l in range(toplevel):
+        levels = []
+        for l in range(toplevel + 1):
             levels.append(LevelOfDetail.imageTagAtLevel(image, l))
         return LevelOfDetail(levels)
 
     @staticmethod
     def imageTagAtLevel(image, level):
-        if level == 0:
-            return str(image.convert("L").quantize(256).resize((1,1)).getpixel((0,0)))
-        if level in [1,2,3,4]:
-            v = image.convert("L").quantize(256).resize((2,2)).getpixel((level - 1 - 2 * (level // 3), level//3))
-            return str(v)
-        assert False
+        levels = [
+            meanValue,
+            countRed,
+            countGreen,
+            countBlue
+        ]
+        assert level < len(levels)
+        v = str(levels[level](image))
+        logger.debug("%s at level %i is %s", str(image), level, v)
+        return v
 
     def remove(self):
         #Remove anything already there
@@ -133,8 +159,11 @@ def main():
         logger.info("Has branched at level %i", lod.getLevel())
         lod = LevelOfDetail.fromImageAtLevel(image, lod.getLevel() + 1)
 
-    maxSize = config.getint('storage', 'numberOfImages')
-    moreImagesAllowed = True
+    maxNumberOfImages = config.getint('storage', 'numberOfImages')
+    logger.info("Counting number of images already stored")
+    imagesStored = sum([len(dpf[2]) for dpf in os.walk("images")])
+    logger.info("Found %i stored out of a maximum of %i", imagesStored, maxNumberOfImages)
+    moreImagesAllowed = imagesStored < maxNumberOfImages
 
     if lod.isOccupied():
         #There is an image already stored here. If more images are allowed, branch, otherwise overwrite
