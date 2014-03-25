@@ -83,10 +83,10 @@ def edgeValueForQuadrant(quadrantIndex):
         edges = image.filter(ImageFilter.FIND_EDGES)
         w, h = image.size
         quadrants = (
-          (0, 0, w / 2, h / 2),
-          (w / 2, 0, w, h / 2),
-          (0, h / 2, w / 2, h),
-          (w / 2, h / 2, w, h)
+          (0, 0, w // 2, h // 2),
+          (w // 2, 0, w, h // 2),
+          (0, h // 2, w // 2, h),
+          (w // 2, h // 2, w, h)
          )
         return edges.crop(quadrants[quadrantIndex]).resize((1,1)).getpixel((0,0))
     return q
