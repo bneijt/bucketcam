@@ -139,6 +139,9 @@ class LevelOfDetail(object):
             edgeValueForQuadrant(2),
             edgeValueForQuadrant(1),
             edgeValueForQuadrant(0),
+            #Top off the levels with random values. As long as we can store images, just add randoms
+            randomValue,
+            randomValue,
             randomValue
         ]
         assert level < len(levels)
