@@ -180,6 +180,13 @@ class LevelOfDetail(object):
         logStorage(loc)
 
     def branch(self):
+        '''Branch at the current level
+
+        This transforms an image into a directory.
+        We have to remove the image because the change of removing
+        the branch in the future is minimal because the main function
+        aggresively enters branches on collisions.
+        '''
         self.remove()
         loc = self.path()
         if not os.path.exists(loc):
