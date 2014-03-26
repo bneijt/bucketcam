@@ -135,6 +135,7 @@ LEVELS_OF_DETAIL = [
 ]
 
 class StorageLimit(object):
+    '''Simple storage limit counter'''
     def __init__(self, limit):
         self._useCount = 0
         self.limit = limit
@@ -229,7 +230,7 @@ class LevelOfDetail(object):
         aggresively enters branches on collisions.
 
         If the current level of detail is the maximum level of detail,
-        branching will fail and return false. It returns true otherwise.
+        branching will fail and return False. It returns true otherwise.
         '''
         if len(self.levels) >= len(LEVELS_OF_DETAIL):
             return False
