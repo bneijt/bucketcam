@@ -79,16 +79,24 @@ def countRed(image):
     return len(set(data))
 
 def countGreen(image):
-    #Number of colors used in image
+    '''Different values of green
+    used in the image'''
     assert image.mode == "RGB"
     data = image.resize((100,100)).getdata(band = 1)
     return len(set(data))
 
 def countBlue(image):
-    #Number of colors used in image
+    '''Different values of blue
+    used in the image'''
     assert image.mode == "RGB"
     data = image.resize((100,100)).getdata(band = 2)
     return len(set(data))
+
+def binaryPixelCount(image):
+    '''Number of pixels that fall in to the first of two categories
+    when the image has been converted to two colors'''
+    return image.convert("L").quantize(2).histogram()[0]
+
 
 def edgeValueForQuadrant(quadrantIndex):
     def q(image):
@@ -122,9 +130,28 @@ LEVELS_OF_DETAIL = [
     edgeValueForQuadrant(3),
     edgeValueForQuadrant(2),
     edgeValueForQuadrant(1),
-    edgeValueForQuadrant(0)
+    edgeValueForQuadrant(0),
+    binaryPixelCount
 ]
 
+class StorageLimit(object):
+    def __init__(self, limit):
+        self._useCount = 0
+        self.limit = limit
+    def hasLimitBeenReached(self):
+        return self._useCount >= self.limit
+    def loadFromDisk(self):
+        self._useCount = sum([len(dpf[2]) for dpf in os.walk("images")])
+    def getUsed(self):
+        return self._useCount
+    def usedAndLimit(self):
+        return (self._useCount, self.limit)
+    def inc(self, amount):
+        self._useCount += amount
+        return self._useCount
+    def dec(self, amount):
+        self._useCount -= amount
+        return self._useCount
 
 class LevelOfDetail(object):
     def __init__(self, levels):
@@ -146,23 +173,24 @@ class LevelOfDetail(object):
         v = str(LEVELS_OF_DETAIL[level](image))
         return v
 
-    def remove(self):
+    def remove(self, storageLimit):
         #Remove anything already there
         path = self.path()
         removeCount = 0
         if os.path.exists(path):
             assert os.isdir(path)
-            logger.info("Removing %s", path)
+            logger.debug("Removing %s", path)
             for (root, dirnames, files) in os.walk(top, topdown=False):
                 removeCount += len(files)
                 map(os.unlink, [os.path.join(root, name) for name in files])
             for (path, dirnames, files) in os.walk(top, topdown=False):
                 map(os.rmdir, [os.path.join(root, name) for name in dirnames])
         if os.path.exists(path + ".jpg"):
-            logger.info("Removing %s", path + ".jpg")
+            logger.debug("Removing %s", path + ".jpg")
             os.unlink(path + ".jpg")
             removeCount += 1
         logger.debug("Removed %i files", removeCount)
+        storageLimit.dec(removeCount)
         return removeCount
 
     def getLevel(self):
@@ -176,17 +204,18 @@ class LevelOfDetail(object):
         loc = self.path()
         return os.path.exists(loc) and os.path.isdir(loc)
 
-    def store(self, image):
-        self.remove()
+    def store(self, image, storageLimit):
+        self.remove(storageLimit)
         path = self.path()
         directory = os.path.dirname(path)
         if len(directory) and not os.path.exists(directory):
             os.makedirs(directory)
         loc = path + ".jpg"
         image.save(loc)
+        storageLimit.inc(1)
         logStorage(loc)
 
-    def branch(self):
+    def branch(self, storageLimit):
         '''Branch at the current level
 
         This transforms an image into a directory.
@@ -199,7 +228,7 @@ class LevelOfDetail(object):
         '''
         if len(self.levels) >= len(LEVELS_OF_DETAIL):
             return False
-        self.remove()
+        self.remove(storageLimit)
         loc = self.path()
         if not os.path.exists(loc):
             os.makedirs(loc)
@@ -228,32 +257,35 @@ def main():
         lod = LevelOfDetail.fromImageAtLevel(image, lod.getLevel() + 1)
 
     maxNumberOfImages = config.getint('storage', 'numberOfImages')
-    logger.info("Counting number of images already stored")
-    imagesStored = sum([len(dpf[2]) for dpf in os.walk("images")])
-    logger.info("Found %i stored out of a maximum of %i", imagesStored, maxNumberOfImages)
-    moreImagesAllowed = imagesStored < maxNumberOfImages
+    storageLimit = StorageLimit(maxNumberOfImages)
+    storageLimit.loadFromDisk()
+    logger.info("Storage limit at %i out of %i" % storageLimit.usedAndLimit())
 
     if lod.isOccupied():
         #There is an image already stored here. If more images are allowed, branch, otherwise overwrite
-        if moreImagesAllowed:
-            #Branch to store the extra image
+        if storageLimit.hasLimitBeenReached():
+            #Branch if possible
             if lod.branch():
                 logger.info("Branching into level %i", lod.getLevel() + 1)
                 lod = LevelOfDetail.fromImageAtLevel(image, lod.getLevel() + 1)
             else:
                 logger.warn("More images allowed, but no more levels of detail left")
-            lod.store(image)
+            lod.store(image, storageLimit)
         else:
             #No more images allowed, just overwrite the image or directory
-            lod.store(image)
+            lod.store(image, storageLimit)
     else:
         #There is no image here, if we store here we get another image
-        if moreImagesAllowed:
-            lod.store(image)
+        if storageLimit.hasLimitBeenReached():
+            lod.store(image, storageLimit)
         else:
-            #No more images allowed, prune the branch by going up one and storing there
-            lod = LevelOfDetail.fromImageAtLevel(image, lod.getLevel() - 1)
-            lod.store(image)
+            if lod.getLevel() > 0:
+                #No more images allowed, prune the branch by going up one and storing there
+                lod = LevelOfDetail.fromImageAtLevel(image, lod.getLevel() - 1)
+            else:
+                logger.warning("Should be pruning, but that has not been implemented yet")
+                logger.error("Probably exceeding limit because of excess storage in level 0")
+            lod.store(image, storageLimit)
     return 0
 
 if __name__ == "__main__":
