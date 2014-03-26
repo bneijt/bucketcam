@@ -114,6 +114,18 @@ def logStorage(filename):
     with open(logFilename, "a") as storageLog:
         storageLog.write("%s %s %s\n" % (imageTimestamp.isoformat(), imageHash, filename))
 
+LEVELS_OF_DETAIL = [
+    meanValue,
+    countRed,
+    countGreen,
+    countBlue,
+    edgeValueForQuadrant(3),
+    edgeValueForQuadrant(2),
+    edgeValueForQuadrant(1),
+    edgeValueForQuadrant(0)
+]
+
+
 class LevelOfDetail(object):
     def __init__(self, levels):
         assert isinstance(levels, list)
@@ -130,22 +142,8 @@ class LevelOfDetail(object):
 
     @staticmethod
     def imageTagAtLevel(image, level):
-        levels = [
-            meanValue,
-            countRed,
-            countGreen,
-            countBlue,
-            edgeValueForQuadrant(3),
-            edgeValueForQuadrant(2),
-            edgeValueForQuadrant(1),
-            edgeValueForQuadrant(0),
-            #Top off the levels with random values. As long as we can store images, just add randoms
-            randomValue,
-            randomValue,
-            randomValue
-        ]
-        assert level < len(levels)
-        v = str(levels[level](image))
+        assert level < len(LEVELS_OF_DETAIL)
+        v = str(LEVELS_OF_DETAIL[level](image))
         return v
 
     def remove(self):
@@ -195,11 +193,17 @@ class LevelOfDetail(object):
         We have to remove the image because the change of removing
         the branch in the future is minimal because the main function
         aggresively enters branches on collisions.
+        
+        If the current level of detail is the maximum level of detail,
+        branching will fail and return false. It returns true otherwise.
         '''
+        if len(self.levels) >= len(LEVELS_OF_DETAIL):
+            return False
         self.remove()
         loc = self.path()
         if not os.path.exists(loc):
             os.makedirs(loc)
+        return True
 
     def path(self):
         return os.path.join("images", *self.levels)
@@ -233,9 +237,11 @@ def main():
         #There is an image already stored here. If more images are allowed, branch, otherwise overwrite
         if moreImagesAllowed:
             #Branch to store the extra image
-            logger.info("Branching and increasing level")
-            lod.branch()
-            lod = LevelOfDetail.fromImageAtLevel(image, lod.getLevel() + 1)
+            if lod.branch():
+                logger.info("Branching into level %i", lod.getLevel() + 1)
+                lod = LevelOfDetail.fromImageAtLevel(image, lod.getLevel() + 1)
+            else:
+                logger.warn("More images allowed, but no more levels of detail left")
             lod.store(image)
         else:
             #No more images allowed, just overwrite the image or directory
