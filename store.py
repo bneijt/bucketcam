@@ -178,7 +178,7 @@ class LevelOfDetail(object):
         path = self.path()
         removeCount = 0
         if os.path.exists(path):
-            assert os.isdir(path)
+            assert os.path.isdir(path)
             logger.debug("Removing %s", path)
             for (root, dirnames, files) in os.walk(top, topdown=False):
                 removeCount += len(files)
