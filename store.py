@@ -28,7 +28,7 @@ import shutil
 import hashlib
 import random
 
-logging.basicConfig(level = logging.INFO, format = '%(asctime)s %(levelname)s %(message)s')
+logging.basicConfig(level = logging.DEBUG, format = '%(asctime)s %(levelname)s %(message)s')
 logger = logging.getLogger(__name__)
 
 class UTC(datetime.tzinfo):
@@ -110,7 +110,7 @@ def edgeValueForQuadrant(quadrantIndex):
          )
         return edges.crop(quadrants[quadrantIndex]).resize((1,1)).getpixel((0,0))
     return q
-    
+
 def randomValue(image):
     return random.randint(0, 1000)
 
@@ -180,16 +180,20 @@ class LevelOfDetail(object):
         if os.path.exists(path):
             assert os.path.isdir(path)
             logger.debug("Removing %s", path)
-            for (root, dirnames, files) in os.walk(top, topdown=False):
+            for (root, dirnames, files) in os.walk(path, topdown = True):
                 removeCount += len(files)
-                map(os.unlink, [os.path.join(root, name) for name in files])
-            for (path, dirnames, files) in os.walk(top, topdown=False):
-                map(os.rmdir, [os.path.join(root, name) for name in dirnames])
+                logger.debug("Removing %s", repr(files))
+                for name in files:
+                    os.unlink(os.path.join(root, name))
+            for (root, dirnames, files) in os.walk(path, topdown = False):
+                for name in dirnames:
+                    os.rmdir(os.path.join(root, name))
+            os.rmdir(path)
         if os.path.exists(path + ".jpg"):
             logger.debug("Removing %s", path + ".jpg")
             os.unlink(path + ".jpg")
             removeCount += 1
-        logger.debug("Removed %i files", removeCount)
+        logger.debug("Removed %i file", removeCount)
         storageLimit.dec(removeCount)
         return removeCount
 
@@ -211,6 +215,7 @@ class LevelOfDetail(object):
         if len(directory) and not os.path.exists(directory):
             os.makedirs(directory)
         loc = path + ".jpg"
+        logger.debug("Storing %s", loc)
         image.save(loc)
         storageLimit.inc(1)
         logStorage(loc)
@@ -222,7 +227,7 @@ class LevelOfDetail(object):
         We have to remove the image because the change of removing
         the branch in the future is minimal because the main function
         aggresively enters branches on collisions.
-        
+
         If the current level of detail is the maximum level of detail,
         branching will fail and return false. It returns true otherwise.
         '''
@@ -261,31 +266,30 @@ def main():
     storageLimit.loadFromDisk()
     logger.info("Storage limit at %i out of %i" % storageLimit.usedAndLimit())
 
-    if lod.isOccupied():
-        #There is an image already stored here. If more images are allowed, branch, otherwise overwrite
-        if storageLimit.hasLimitBeenReached():
-            #Branch if possible
-            if lod.branch():
+
+    if storageLimit.hasLimitBeenReached():
+        #If there is an image, we can just overwrite it
+        #If there is no image there, and we are at a higher level.
+        # We need to start pruning this branch
+        if lod.getLevel() > 0:
+            logger.warning("Moving down one level of detail to save storage space")
+            lod = LevelOfDetail.fromImageAtLevel(image, lod.getLevel() - 1)
+        elif not lod.isOccupied():
+            logger.warning("Should be doing some kind of level 0 random pruning")
+            logger.error("Probably exceeding limit because of excess storage in level 0")
+        #In the end, we have to store
+        lod.store(image, storageLimit)
+    else:
+        if lod.isOccupied():
+            #Just branch if there is a collision
+            if lod.branch(storageLimit):
                 logger.info("Branching into level %i", lod.getLevel() + 1)
                 lod = LevelOfDetail.fromImageAtLevel(image, lod.getLevel() + 1)
             else:
                 logger.warn("More images allowed, but no more levels of detail left")
-            lod.store(image, storageLimit)
-        else:
-            #No more images allowed, just overwrite the image or directory
-            lod.store(image, storageLimit)
-    else:
-        #There is no image here, if we store here we get another image
-        if storageLimit.hasLimitBeenReached():
-            lod.store(image, storageLimit)
-        else:
-            if lod.getLevel() > 0:
-                #No more images allowed, prune the branch by going up one and storing there
-                lod = LevelOfDetail.fromImageAtLevel(image, lod.getLevel() - 1)
-            else:
-                logger.warning("Should be pruning, but that has not been implemented yet")
-                logger.error("Probably exceeding limit because of excess storage in level 0")
-            lod.store(image, storageLimit)
+        lod.store(image, storageLimit)
+
+
     return 0
 
 if __name__ == "__main__":
