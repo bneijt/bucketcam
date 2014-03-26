@@ -28,7 +28,7 @@ import shutil
 import hashlib
 import random
 
-logging.basicConfig(level = logging.DEBUG, format = '%(asctime)s %(levelname)s %(message)s')
+logging.basicConfig(level = logging.INFO, format = '%(asctime)s %(levelname)s %(message)s')
 logger = logging.getLogger(__name__)
 
 class UTC(datetime.tzinfo):
@@ -252,19 +252,16 @@ def loadConfig():
     config.read('bucketcam.ini')
     return config
 
-def main():
-    config = loadConfig()
 
+
+def loadAndStoreImage(config, storageLimit):
+    logger.info("Storage limit at %i out of %i" % storageLimit.usedAndLimit())
     #Load image
     image = loadImage(config)
     lod = LevelOfDetail.fromImageAtLevel(image, 0)
     while lod.hasBranched():
         lod = LevelOfDetail.fromImageAtLevel(image, lod.getLevel() + 1)
 
-    maxNumberOfImages = config.getint('storage', 'numberOfImages')
-    storageLimit = StorageLimit(maxNumberOfImages)
-    storageLimit.loadFromDisk()
-    logger.info("Storage limit at %i out of %i" % storageLimit.usedAndLimit())
 
 
     if storageLimit.hasLimitBeenReached():
@@ -283,13 +280,20 @@ def main():
         if lod.isOccupied():
             #Just branch if there is a collision
             if lod.branch(storageLimit):
-                logger.info("Branching into level %i", lod.getLevel() + 1)
+                logger.debug("Branching into level %i", lod.getLevel() + 1)
                 lod = LevelOfDetail.fromImageAtLevel(image, lod.getLevel() + 1)
             else:
                 logger.warn("More images allowed, but no more levels of detail left")
         lod.store(image, storageLimit)
 
+def main():
+    config = loadConfig()
 
+    maxNumberOfImages = config.getint('storage', 'numberOfImages')
+    storageLimit = StorageLimit(maxNumberOfImages)
+    storageLimit.loadFromDisk()
+    while True:
+        loadAndStoreImage(config, storageLimit)
     return 0
 
 if __name__ == "__main__":
