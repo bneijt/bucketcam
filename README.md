@@ -31,6 +31,16 @@ Installation
  - Install Pillow or PIL (check if `from PIL import Image` works)
  - Copy `bucketcam.ini.example` to `bucketcam.ini` and fill with sensible values
 
+Development
+-----------
+ - Run `./bootstrap.sh` to install a virtual env or install the
+   dependencies mentioned in that file by hand globally on your system.
+ - Create patches and send them to me. My personal wishlist includes:
+    - Javascript based report.py output with fancy browser an dynamic image loading.
+    - Configuration parameters to define maximum record speed.
+    - Images loaded using two threads and a single value blocking queue.
+
+
 Usage
 -----
  - Run `store.py` next to the `bucketcam.ini` file.
