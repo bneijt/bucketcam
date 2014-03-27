@@ -36,7 +36,8 @@ Development
  - Run `./bootstrap.sh` to install a virtual env or install the
    dependencies mentioned in that file by hand globally on your system.
  - Create patches and send them to me. My personal wishlist includes:
-    - Javascript based report.py output with fancy browser an dynamic image loading.
+    - Javascript based report.py output with fancy browser an dynamic image loading,
+      or some kind of report pagination would also be cool.
     - Configuration parameters to define maximum record speed.
     - Images loaded using two threads and a single value blocking queue.
 
