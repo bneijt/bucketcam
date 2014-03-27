@@ -17,6 +17,7 @@
 import store
 import logging
 import os.path
+import arrow
 
 logging.basicConfig(level = logging.DEBUG, format = '%(asctime)s %(levelname)s %(message)s')
 logger = logging.getLogger(__name__)
@@ -29,11 +30,12 @@ figure {
     max-width: 200px;
     display: inline-block;
     text-align: center;
+    margin: 1px;b
 }
 figure.approximateImage {
     background-color: silver;
     color: black;
-    font-style: italic
+    font-style: italic;
 }
 img {
     max-width: 100%;
@@ -65,24 +67,25 @@ def logFiles():
     for entry in os.listdir("images"):
         if entry.startswith("storage_") and entry.endswith(".log"):
             yield os.path.join("images", entry)
-def missingTag(time):
+def missingTag(timestamp):
     return '''
 <div class="missingImage">
 %(time)s
 </div>''' % {
-        "time": time,
+        "time": timestamp.format("HH:mm:ss"),
     }
-def imageTag(time, filename, exactFile = False):
+def imageTag(timestamp, filename, exactFile = False):
     figureClass = ("exactImage" if exactFile else "approximateImage")
     return '''
 <figure class="%(figureClass)s">
     <a href="%(src)s">
-        <img src="%(src)s" alt="Image from %(time)s"/>
+        <img src="%(src)s" alt="Snapshot at %(datetime)s"/>
     </a>
     <figcaption>%(time)s</figcaption>
 </figure>''' % {
         "src": filename,
-        "time": time,
+        "time": timestamp.format('HH:mm:ss'),
+        "datetime": timestamp.format('YYYY-MM-DD HH:mm:ss ZZ'),
         "figureClass": figureClass
     }
 
@@ -95,15 +98,15 @@ def main():
                 htmlFile.write(HTML_HEAD)
                 for line in logFile.readlines():
                     line = line.strip()
-                    (timestamp, hashWhenStored, filename) = line.split(" ", 2)
-                    (date, time) = timestamp.split("T", 1)
-                    
+                    (ascTimestamp, hashWhenStored, filename) = line.split(" ", 2)
+                    timestamp = arrow.get(ascTimestamp).to('local')
+
                     fileStillExists = os.path.exists(filename)
                     if not os.path.exists(filename):
-                        htmlFile.write(missingTag(time))
+                        htmlFile.write(missingTag(timestamp))
                     else:
                         currentHash = currentHashOf(filename)
-                        htmlFile.write(imageTag(time,
+                        htmlFile.write(imageTag(timestamp,
                                 filename[len("images/"):],
                                 exactFile = hashWhenStored == currentHash))
                 htmlFile.write(HTML_TAIL)
