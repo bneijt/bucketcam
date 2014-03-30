@@ -27,21 +27,10 @@ import datetime
 import shutil
 import hashlib
 import random
+import arrow
 
 logging.basicConfig(level = logging.INFO, format = '%(asctime)s %(levelname)s %(message)s')
 logger = logging.getLogger(__name__)
-
-class UTC(datetime.tzinfo):
-  """UTC"""
-
-  def utcoffset(self, dt):
-    return datetime.timedelta(0)
-
-  def tzname(self, dt):
-    return "UTC"
-
-  def dst(self, dt):
-    return datetime.timedelta(0)
 
 def hashOfFile(filename):
     buffSize = 1024*100
@@ -53,20 +42,28 @@ def hashOfFile(filename):
             buff = afile.read(buffSize)
     return hasher.hexdigest()
 
-def loadCameraImage(config):
-    url = config.get("source", "imageDownloadUrl")
 
-    password_mgr = urllib.request.HTTPPasswordMgrWithDefaultRealm()
+class ImageLoader(object):
+    def __init__(self, config):
+        self.config = config
+    def __iter__(self):
+        while True:
+            yield self.loadCameraImage(self.config)
+    def loadCameraImage(self, config):
+        url = config.get("source", "imageDownloadUrl")
 
-    username = config.get("source", "basicAuthUser")
-    password = config.get("source", "basicAuthPass")
-    password_mgr.add_password(None, url, username, password)
+        password_mgr = urllib.request.HTTPPasswordMgrWithDefaultRealm()
 
-    handler = urllib.request.HTTPDigestAuthHandler(password_mgr)
+        username = config.get("source", "basicAuthUser")
+        password = config.get("source", "basicAuthPass")
+        password_mgr.add_password(None, url, username, password)
 
-    opener = urllib.request.build_opener(handler)
-    r = opener.open(url)
-    return r.read()
+        handler = urllib.request.HTTPDigestAuthHandler(password_mgr)
+
+        opener = urllib.request.build_opener(handler)
+        r = opener.open(url)
+        imageData = io.BytesIO(r.read())
+        return Image.open(imageData)
 
 def meanValue(image):
     #General value of image
@@ -116,11 +113,21 @@ def randomValue(image):
 
 
 def logStorage(filename):
-    imageTimestamp = datetime.datetime.now(UTC())
+    imageTimestamp = arrow.get()
     imageHash = hashOfFile(filename)
     logFilename = "images/storage_%s.log" % imageTimestamp.strftime("%Y-%m-%d")
     with open(logFilename, "a") as storageLog:
         storageLog.write("%s %s %s\n" % (imageTimestamp.isoformat(), imageHash, filename))
+
+def readLogStorage(filename):
+    with open(filename, "r") as storageLog:
+        for line in storageLog.readLines():
+            (isoTime, hashWhenStored, filename) = line.split(" ", 2)
+            yield {
+                "datetime": arrow.get(isoTime).to('local'),
+                "hash": hashWhenStored,
+                "filename": filename.strip()
+            }
 
 LEVELS_OF_DETAIL = [
     meanValue,
@@ -243,10 +250,6 @@ class LevelOfDetail(object):
     def path(self):
         return os.path.join("images", *self.levels)
 
-def loadImage(config):
-    logger.info("Loading image")
-    imageData = io.BytesIO(loadCameraImage(config))
-    return Image.open(imageData)
 
 def loadConfig():
     config = configparser.ConfigParser()
@@ -255,10 +258,9 @@ def loadConfig():
 
 
 
-def loadAndStoreImage(config, storageLimit):
+def loadAndStoreImage(image, storageLimit):
     logger.info("Storage limit at %i out of %i" % storageLimit.usedAndLimit())
     #Load image
-    image = loadImage(config)
     lod = LevelOfDetail.fromImageAtLevel(image, 0)
     while lod.hasBranched():
         lod = LevelOfDetail.fromImageAtLevel(image, lod.getLevel() + 1)
@@ -292,9 +294,10 @@ def main():
 
     maxNumberOfImages = config.getint('storage', 'numberOfImages')
     storageLimit = StorageLimit(maxNumberOfImages)
+    imageLoader = ImageLoader(config)
     storageLimit.loadFromDisk()
-    while True:
-        loadAndStoreImage(config, storageLimit)
+    for image in imageLoader:
+        loadAndStoreImage(image, storageLimit)
     return 0
 
 if __name__ == "__main__":
