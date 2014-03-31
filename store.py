@@ -121,7 +121,7 @@ def logStorage(filename):
 
 def readLogStorage(filename):
     with open(filename, "r") as storageLog:
-        for line in storageLog.readLines():
+        for line in storageLog.readlines():
             (isoTime, hashWhenStored, filename) = line.split(" ", 2)
             yield {
                 "datetime": arrow.get(isoTime).to('local'),
